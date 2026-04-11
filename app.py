@@ -1,13 +1,24 @@
 import sqlite3
 from flask import Flask, jsonify, request
+from datetime import datetime
+from pymongo import MongoClient
+
+client = MongoClient("mongodb+srv://admin:admin@cluster0.fjdxl7l.mongodb.net/?appName=Cluster0")
+db = client['inventario']
+coleccion = db["movimientos_log"]
 
 app = Flask(__name__)
 DATABASE = 'inventario.db'
 
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
+    conn = sqlite3.connect(
+        DATABASE,
+        timeout=10,
+        check_same_thread=False
+    )
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode=WAL") 
     return conn
 
 
@@ -439,6 +450,16 @@ def update_producto(codigo):
     cursor.execute(f"UPDATE producto SET {', '.join(campos)} WHERE codigo_producto = ?", valores)
     conn.commit()
     updated = cursor.rowcount
+    if updated > 0:
+        try:
+            coleccion.insert_one({
+                "tipo": "actualizacion_producto",
+                "producto": codigo,
+                "datos": data,
+                "fecha": datetime.now().isoformat()
+            })
+        except:
+            print("Mongo falló pero SQL sigue funcionando")
     conn.close()
     if updated == 0:
         return jsonify({"error": "Producto no encontrado"}), 404
@@ -456,7 +477,29 @@ def delete_producto(codigo):
         return jsonify({"error": "Producto no encontrado"}), 404
     return jsonify({"message": "Producto eliminado exitosamente"})
 
+@app.route('/productos/<int:codigo>/historial', methods=['GET'])
+def get_historial_producto(codigo):
+    conn = get_db_connection()
+    producto = conn.execute(
+        'SELECT * FROM producto WHERE codigo_producto = ?',
+        (codigo,)
+    ).fetchone()
+    conn.close()
 
+    if producto is None:
+        return jsonify({"error": "Producto no encontrado"}), 404
+
+    logs = list(coleccion.find(
+        {"producto": codigo},
+        {"_id": 0}
+    ))
+
+    resultado = {
+        "producto": dict(producto),
+        "historial": logs
+    }
+
+    return jsonify(resultado)
 
 
 @app.route('/facturas', methods=['GET'])
@@ -494,19 +537,35 @@ def get_factura(id_factura):
 @app.route('/facturas', methods=['POST'])
 def create_factura():
     data = request.get_json()
+
     if not data or 'cc_cliente' not in data or 'id_producto' not in data:
         return jsonify({"error": "Se requieren 'cc_cliente' e 'id_producto'"}), 400
+
     conn = get_db_connection()
     cursor = conn.cursor()
+
     try:
-        cursor.execute('INSERT INTO factura (cc_cliente, id_producto) VALUES (?, ?)',
-                       (data['cc_cliente'], data['id_producto']))
+        cursor.execute(
+            'INSERT INTO factura (cc_cliente, id_producto) VALUES (?, ?)',
+            (data['cc_cliente'], data['id_producto'])
+        )
         conn.commit()
         new_id = cursor.lastrowid
+
+        coleccion.insert_one({
+            "tipo": "venta",
+            "id_factura": new_id,
+            "cliente": data['cc_cliente'],
+            "producto": data['id_producto'],
+            "fecha": datetime.now().isoformat()
+        })
+
     except sqlite3.IntegrityError as e:
         return jsonify({"error": str(e)}), 409
+
     finally:
         conn.close()
+
     return jsonify({"id_factura": new_id}), 201
 
 @app.route('/facturas/<int:id_factura>', methods=['PUT'])
@@ -544,7 +603,10 @@ def delete_factura(id_factura):
         return jsonify({"error": "Factura no encontrada"}), 404
     return jsonify({"message": "Factura eliminada exitosamente"})
 
-
+@app.route('/logs', methods=['GET'])
+def get_logs():
+    logs = list(coleccion.find({}, {"_id": 0}))
+    return jsonify(logs)
 
 
 if __name__ == '__main__':

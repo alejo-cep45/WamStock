@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+
+{% block title %}Dashboard — WamStock{% endblock %}
+{% block page_icon %}◈{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid" id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Productos</div>
+    <div class="stat-value" id="stat-productos"><span class="spinner"></span></div>
+    <div class="stat-sub">en inventario</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Clientes</div>
+    <div class="stat-value" id="stat-clientes"><span class="spinner"></span></div>
+    <div class="stat-sub">registrados</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Facturas</div>
+    <div class="stat-value" id="stat-facturas"><span class="spinner"></span></div>
+    <div class="stat-sub">total emitidas</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Proveedores</div>
+    <div class="stat-value" id="stat-proveedores"><span class="spinner"></span></div>
+    <div class="stat-sub">activos</div>
+  </div>
+</div>
+
+<!-- Alertas de stock -->
+<div class="table-card" id="alertas-card" style="margin-bottom:24px; display:none">
+  <div class="table-header">
+    <span class="table-title">⚠ Alertas de stock bajo</span>
+  </div>
+  <div id="alertas-body"></div>
+</div>
+
+<!-- Últimas facturas -->
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Últimas facturas</span>
+    <a href="/facturas" class="btn btn-secondary btn-sm">Ver todas</a>
+  </div>
+  <div id="facturas-body"><div class="loading"><span class="spinner"></span>Cargando...</div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  const [productos, clientes, facturas, proveedores, alertas] = await Promise.all([
+    apiFetch('/api/productos').then(r => r?.json()),
+    apiFetch('/api/clientes').then(r => r?.json()),
+    apiFetch('/api/facturas').then(r => r?.json()),
+    apiFetch('/api/proveedores').then(r => r?.json()),
+    apiFetch('/api/logs/alertas-stock').then(r => r?.json()),
+  ]);
+
+  document.getElementById('stat-productos').textContent   = productos?.length ?? '—';
+  document.getElementById('stat-clientes').textContent    = clientes?.length  ?? '—';
+  document.getElementById('stat-facturas').textContent    = facturas?.length  ?? '—';
+  document.getElementById('stat-proveedores').textContent = proveedores?.length ?? '—';
+
+  // Alertas stock
+  if (alertas?.length) {
+    const card = document.getElementById('alertas-card');
+    card.style.display = 'block';
+    const unique = [...new Map(alertas.map(a => [a.codigo_producto, a])).values()];
+    document.getElementById('alertas-body').innerHTML = `
+      <table><thead><tr>
+        <th>Código</th><th>Producto</th><th>Stock actual</th><th>Umbral</th><th>Fecha</th>
+      </tr></thead><tbody>
+        ${unique.slice(0,5).map(a => `<tr>
+          <td>${a.codigo_producto}</td>
+          <td>${a.nombre_producto}</td>
+          <td><span class="badge badge-red">${a.stock_actual}</span></td>
+          <td>${a.umbral}</td>
+          <td>${a.fecha?.substring(0,16) ?? '—'}</td>
+        </tr>`).join('')}
+      </tbody></table>`;
+  }
+
+  // Últimas 5 facturas
+  const fb = document.getElementById('facturas-body');
+  if (!facturas?.length) {
+    fb.innerHTML = '<div class="empty-state"><div class="icon">▤</div><p>Sin facturas aún</p></div>';
+    return;
+  }
+  fb.innerHTML = `<table><thead><tr>
+    <th>#</th><th>Cliente</th><th>Producto</th><th>Precio</th><th>Fecha</th>
+  </tr></thead><tbody>
+    ${facturas.slice(0,5).map(f => `<tr>
+      <td>${f.id_factura}</td>
+      <td>${f.nombre_cliente}</td>
+      <td>${f.nombre_producto}</td>
+      <td>$${Number(f.precio).toLocaleString('es-CO')}</td>
+      <td>${f.fecha?.substring(0,16) ?? '—'}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+document.addEventListener('DOMContentLoaded', loadDashboard);
+</script>
+{% endblock %}

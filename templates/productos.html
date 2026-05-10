@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% set active = "productos" %}
+
+{% block title %}Productos — WamStock{% endblock %}
+{% block page_icon %}▦{% endblock %}
+{% block page_title %}Productos{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="openModal()">+ Nuevo producto</button>
+{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Inventario</span>
+    <input class="table-search" type="text" id="search" placeholder="Buscar producto..." oninput="filterTable()">
+  </div>
+  <div id="table-body"><div class="loading"><span class="spinner"></span>Cargando...</div></div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Nuevo producto</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
+      <div class="form-group">
+        <label>Código</label>
+        <input type="number" id="f-codigo" placeholder="1001">
+      </div>
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="f-nombre" placeholder="Nombre del producto">
+      </div>
+      <div class="form-group">
+        <label>Precio</label>
+        <input type="number" id="f-precio" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>Stock</label>
+        <input type="number" id="f-stock" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>NIT Proveedor</label>
+        <select id="f-proveedor"><option value="">— Seleccionar —</option></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let productos = [];
+let editingId = null;
+
+async function load() {
+  const [pRes, provRes] = await Promise.all([
+    apiFetch('/api/productos'),
+    apiFetch('/api/proveedores')
+  ]);
+  productos = await pRes.json();
+  const proveedores = await provRes.json();
+
+  const sel = document.getElementById('f-proveedor');
+  proveedores.forEach(p => {
+    sel.innerHTML += `<option value="${p.nit_proveedor}">${p.nombre} (${p.nit_proveedor})</option>`;
+  });
+
+  renderTable(productos);
+}
+
+function renderTable(data) {
+  const el = document.getElementById('table-body');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">▦</div><p>Sin productos</p></div>';
+    return;
+  }
+  const rol = getRol();
+  el.innerHTML = `<table><thead><tr>
+    <th>Código</th><th>Nombre</th><th>Precio</th><th>Stock</th><th>Proveedor</th><th>Acciones</th>
+  </tr></thead><tbody>
+    ${data.map(p => `<tr>
+      <td>${p.codigo_producto}</td>
+      <td style="color:var(--text)">${p.nombre}</td>
+      <td>$${Number(p.precio||0).toLocaleString('es-CO')}</td>
+      <td>${p.stock <= 5
+        ? `<span class="badge badge-red">${p.stock}</span>`
+        : `<span class="badge badge-green">${p.stock}</span>`}</td>
+      <td>${p.nit_proveedor ?? '—'}</td>
+      <td class="td-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editar(${p.codigo_producto})">Editar</button>
+        ${rol === 'tendero' ? `<button class="btn btn-danger btn-sm" onclick="eliminar(${p.codigo_producto})">Eliminar</button>` : ''}
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function filterTable() {
+  const q = document.getElementById('search').value.toLowerCase();
+  renderTable(productos.filter(p =>
+    p.nombre.toLowerCase().includes(q) || String(p.codigo_producto).includes(q)
+  ));
+}
+
+function openModal(p = null) {
+  editingId = p ? p.codigo_producto : null;
+  document.getElementById('modal-title').textContent = p ? 'Editar producto' : 'Nuevo producto';
+  document.getElementById('f-codigo').value    = p?.codigo_producto ?? '';
+  document.getElementById('f-nombre').value    = p?.nombre ?? '';
+  document.getElementById('f-precio').value    = p?.precio ?? '';
+  document.getElementById('f-stock').value     = p?.stock ?? '';
+  document.getElementById('f-proveedor').value = p?.nit_proveedor ?? '';
+  document.getElementById('f-codigo').disabled = !!p;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function editar(codigo) {
+  const p = productos.find(x => x.codigo_producto === codigo);
+  if (p) openModal(p);
+}
+
+async function guardar() {
+  const body = {
+    nombre:        document.getElementById('f-nombre').value,
+    precio:        Number(document.getElementById('f-precio').value),
+    stock:         Number(document.getElementById('f-stock').value),
+    nit_proveedor: document.getElementById('f-proveedor').value || null
+  };
+
+  let res;
+  if (editingId) {
+    res = await apiFetch(`/api/productos/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
+  } else {
+    body.codigo_producto = Number(document.getElementById('f-codigo').value);
+    res = await apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast(editingId ? 'Producto actualizado' : 'Producto creado');
+  closeModal();
+  load();
+}
+
+async function eliminar(codigo) {
+  if (!confirm('¿Eliminar este producto?')) return;
+  const res = await apiFetch(`/api/productos/${codigo}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast('Producto eliminado');
+  load();
+}
+
+document.addEventListener('DOMContentLoaded', load);
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% set active = "facturas" %}
+
+{% block title %}Facturas — WamStock{% endblock %}
+{% block page_icon %}▤{% endblock %}
+{% block page_title %}Facturas{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="openModal()">+ Nueva factura</button>
+{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Registro de ventas</span>
+    <input class="table-search" type="text" id="search" placeholder="Buscar..." oninput="filterTable()">
+  </div>
+  <div id="table-body"><div class="loading"><span class="spinner"></span>Cargando...</div></div>
+</div>
+
+<!-- Modal nueva factura -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nueva factura</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <label style="margin-bottom:0">Cliente <span style="color:var(--text3)">(opcional)</span></label>
+          <button class="btn btn-secondary btn-sm" onclick="openClienteModal()" type="button">+ Nuevo cliente</button>
+        </div>
+        <select id="f-cliente"><option value="">— Sin cliente asignado —</option></select>
+      </div>
+      <div class="form-group">
+        <label>Producto</label>
+        <select id="f-producto"><option value="">— Seleccionar producto —</option></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardar()">Emitir factura</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal nuevo cliente (acceso rápido) -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo cliente</span>
+      <button class="modal-close" onclick="closeClienteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Cédula (CC)</label>
+        <input type="number" id="c-cc" placeholder="1000000000">
+      </div>
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="c-nombre" placeholder="Nombre completo">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="c-email" placeholder="correo@ejemplo.com">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeClienteModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarCliente()">Crear cliente</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let facturas = [];
+
+async function load() {
+  const [fRes, cRes, pRes] = await Promise.all([
+    apiFetch('/api/facturas'),
+    apiFetch('/api/clientes'),
+    apiFetch('/api/productos')
+  ]);
+  facturas = await fRes.json();
+  const clientes  = await cRes.json();
+  const productos = await pRes.json();
+
+  poblarClientes(clientes);
+
+  const sp = document.getElementById('f-producto');
+  sp.innerHTML = '<option value="">— Seleccionar producto —</option>';
+  productos.forEach(p => sp.innerHTML += `<option value="${p.codigo_producto}">${p.nombre} — $${Number(p.precio||0).toLocaleString('es-CO')}</option>`);
+
+  renderTable(facturas);
+}
+
+function poblarClientes(clientes) {
+  const sc = document.getElementById('f-cliente');
+  const selected = sc.value;
+  sc.innerHTML = '<option value="">— Sin cliente asignado —</option>';
+  clientes.forEach(c => sc.innerHTML += `<option value="${c.cc_cliente}">${c.nombre} (${c.cc_cliente})</option>`);
+  if (selected) sc.value = selected;
+}
+
+function renderTable(data) {
+  const el = document.getElementById('table-body');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">▤</div><p>Sin facturas</p></div>';
+    return;
+  }
+  const rol = getRol();
+  el.innerHTML = `<table><thead><tr>
+    <th>#</th><th>Cliente</th><th>Items</th><th>Total</th><th>Fecha</th><th>Acciones</th>
+  </tr></thead><tbody>
+    ${data.map(f => `<tr>
+      <td>${f.id_factura}</td>
+      <td style="color:var(--text)">${f.nombre_cliente ?? '<span style="color:var(--text3)">Público general</span>'}</td>
+      <td><span class="badge badge-blue">${f.items?.length ?? 0} producto${f.items?.length !== 1 ? 's' : ''}</span></td>
+      <td style="font-family:var(--font-mono); color:var(--accent);">$${Number(f.total||0).toLocaleString('es-CO')}</td>
+      <td>${f.fecha?.substring(0,16) ?? '—'}</td>
+      <td class="td-actions">
+        <button class="btn btn-secondary btn-sm" onclick="verDetalle(${f.id_factura})">Ver</button>
+        ${rol === 'tendero' ? `<button class="btn btn-danger btn-sm" onclick="eliminar(${f.id_factura})">Eliminar</button>` : ''}
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function filterTable() {
+  const q = document.getElementById('search').value.toLowerCase();
+  renderTable(facturas.filter(f =>
+    (f.nombre_cliente ?? '').toLowerCase().includes(q) ||
+    f.nombre_producto.toLowerCase().includes(q)
+  ));
+}
+
+// ── Modal factura ─────────────────────────────────────────────────────────────
+function openModal()  { document.getElementById('modal').classList.add('open'); }
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+async function guardar() {
+  const id_producto = document.getElementById('f-producto').value;
+  const cc_cliente  = document.getElementById('f-cliente').value;
+  if (!id_producto) { toast('Selecciona un producto', 'error'); return; }
+
+  const body = { id_producto: Number(id_producto) };
+  if (cc_cliente) body.cc_cliente = Number(cc_cliente);
+
+  const res  = await apiFetch('/api/facturas', { method: 'POST', body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast('Factura emitida correctamente');
+  closeModal();
+  load();
+}
+
+async function eliminar(id) {
+  if (!confirm('¿Eliminar esta factura?')) return;
+  const res  = await apiFetch(`/api/facturas/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast('Factura eliminada');
+  load();
+}
+
+// ── Modal cliente rápido ──────────────────────────────────────────────────────
+function openClienteModal() {
+  document.getElementById('modal').classList.remove('open');
+  document.getElementById('modal-cliente').classList.add('open');
+}
+
+function closeClienteModal() {
+  document.getElementById('modal-cliente').classList.remove('open');
+  document.getElementById('modal').classList.add('open');
+}
+
+async function guardarCliente() {
+  const cc     = Number(document.getElementById('c-cc').value);
+  const nombre = document.getElementById('c-nombre').value.trim();
+  const email  = document.getElementById('c-email').value.trim();
+  if (!cc || !nombre || !email) { toast('Completa todos los campos', 'error'); return; }
+
+  const uRes  = await apiFetch('/api/usuarios', { method: 'POST', body: JSON.stringify({ nombre, email }) });
+  const uData = await uRes.json();
+  if (!uRes.ok) { toast(uData.error, 'error'); return; }
+
+  const cRes  = await apiFetch('/api/clientes', { method: 'POST', body: JSON.stringify({ cc_cliente: cc, id_usuario: uData.id_usuario }) });
+  const cData = await cRes.json();
+  if (!cRes.ok) { toast(cData.error, 'error'); return; }
+
+  toast('Cliente creado, ya puedes seleccionarlo');
+
+  // Recargar lista de clientes y seleccionar el nuevo automáticamente
+  const res      = await apiFetch('/api/clientes');
+  const clientes = await res.json();
+  poblarClientes(clientes);
+  document.getElementById('f-cliente').value = cc;
+
+  // Limpiar campos y volver al modal de factura
+  document.getElementById('c-cc').value     = '';
+  document.getElementById('c-nombre').value = '';
+  document.getElementById('c-email').value  = '';
+  closeClienteModal();
+}
+
+document.addEventListener('DOMContentLoaded', load);
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+document.getElementById('modal-cliente').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-cliente')) closeClienteModal();
+});
+</script>
+{% endblock %}

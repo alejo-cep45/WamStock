@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% set active = "ventas" %}
+
+{% block title %}Nueva Venta — WamStock{% endblock %}
+{% block page_icon %}◈{% endblock %}
+{% block page_title %}Nueva venta{% endblock %}
+
+{% block content %}
+<div style="display:grid; grid-template-columns:1fr 340px; gap:24px; align-items:start;">
+
+  <!-- Panel izquierdo: buscar productos -->
+  <div>
+    <!-- Selector de cliente -->
+    <div class="table-card" style="margin-bottom:20px;">
+      <div class="table-header">
+        <span class="table-title">Cliente</span>
+        <button class="btn btn-secondary btn-sm" onclick="openClienteModal()">+ Nuevo cliente</button>
+      </div>
+      <div style="padding:16px;">
+        <div class="form-group" style="margin:0">
+          <select id="sel-cliente">
+            <option value="">— Venta sin cliente (público general) —</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Buscador de productos -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-title">Productos</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input class="table-search" type="text" id="search-producto" placeholder="Buscar producto..." oninput="filterProductos()" style="width:180px;">
+          <button class="btn btn-secondary btn-sm" onclick="openProductoModal()" type="button">+ Nuevo producto</button>
+        </div>
+      </div>
+      <div id="productos-body">
+        <div class="loading"><span class="spinner"></span>Cargando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel derecho: carrito -->
+  <div style="position:sticky; top:80px;">
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-title">Carrito</span>
+        <button class="btn btn-secondary btn-sm" onclick="limpiarCarrito()">Limpiar</button>
+      </div>
+
+      <div id="carrito-items" style="min-height:120px;">
+        <div class="empty-state" style="padding:32px 20px">
+          <div class="icon">▤</div>
+          <p>Sin productos</p>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border); padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <span style="font-family:var(--font-mono); font-size:11px; text-transform:uppercase; color:var(--text3);">Total</span>
+          <span style="font-family:var(--font-mono); font-size:22px; font-weight:600; color:var(--accent);" id="total-display">$0</span>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="finalizarVenta()" id="btn-finalizar" disabled>
+          Finalizar venta
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal nuevo cliente -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo cliente</span>
+      <button class="modal-close" onclick="closeClienteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Cédula (CC)</label>
+        <input type="number" id="c-cc" placeholder="1000000000">
+      </div>
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="c-nombre" placeholder="Nombre completo">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="c-email" placeholder="correo@ejemplo.com">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeClienteModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarCliente()">Crear cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal nuevo producto -->
+<div class="modal-overlay" id="modal-producto">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo producto</span>
+      <button class="modal-close" onclick="closeProductoModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Código</label>
+        <input type="number" id="p-codigo" placeholder="1001">
+      </div>
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="p-nombre" placeholder="Nombre del producto">
+      </div>
+      <div class="form-group">
+        <label>Precio</label>
+        <input type="number" id="p-precio" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>Stock inicial</label>
+        <input type="number" id="p-stock" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>NIT Proveedor <span style="color:var(--text3)">(opcional)</span></label>
+        <select id="p-proveedor"><option value="">— Sin proveedor —</option></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeProductoModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarProducto()">Crear producto</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal resumen de venta -->
+<div class="modal-overlay" id="modal-resumen">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">✓ Venta finalizada</span>
+      <button class="modal-close" onclick="closeResumen()">✕</button>
+    </div>
+    <div class="modal-body" id="resumen-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeResumen()">Nueva venta</button>
+      <a class="btn btn-primary" href="/facturas">Ver facturas</a>
+    </div>
+  </div>
+</div>
+
+<style>
+.producto-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.producto-row:last-child { border-bottom: none; }
+.producto-row:hover { background: var(--bg3); }
+
+.producto-info { flex: 1; }
+.producto-nombre { font-size: 13px; color: var(--text); }
+.producto-precio { font-size: 12px; font-family: var(--font-mono); color: var(--accent); }
+.producto-stock  { font-size: 11px; color: var(--text3); margin-left: 8px; }
+
+.btn-agregar {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  width: 28px; height: 28px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.btn-agregar:hover { border-color: var(--accent); color: var(--accent); }
+.btn-agregar:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.carrito-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.carrito-item:last-child { border-bottom: none; }
+.carrito-nombre { flex:1; font-size:12px; color:var(--text); }
+.carrito-subtotal { font-family:var(--font-mono); font-size:12px; color:var(--accent); min-width:70px; text-align:right; }
+
+.qty-control {
+  display: flex; align-items: center; gap: 6px;
+}
+.qty-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  width: 22px; height: 22px;
+  border-radius: 2px;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.qty-btn:hover { border-color: var(--accent); color: var(--accent); }
+.qty-num { font-family: var(--font-mono); font-size: 13px; min-width: 20px; text-align: center; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let productos   = [];
+let carrito     = {};   // { id_producto: { nombre, precio, cantidad, stock } }
+let clientes    = [];
+
+// ── Carga inicial ─────────────────────────────────────────────────────────────
+async function load() {
+  const [pRes, cRes, provRes] = await Promise.all([
+    apiFetch('/api/productos'),
+    apiFetch('/api/clientes'),
+    apiFetch('/api/proveedores')
+  ]);
+  productos = await pRes.json();
+  clientes  = await cRes.json();
+  const proveedores = await provRes.json();
+  poblarClientes(clientes);
+  poblarProveedores(proveedores);
+  renderProductos(productos);
+}
+
+function poblarProveedores(lista) {
+  const sel = document.getElementById('p-proveedor');
+  sel.innerHTML = '<option value="">— Sin proveedor —</option>';
+  lista.forEach(p => sel.innerHTML += `<option value="${p.nit_proveedor}">${p.nombre} (${p.nit_proveedor})</option>`);
+}
+
+function poblarClientes(lista) {
+  const sel = document.getElementById('sel-cliente');
+  const val = sel.value;
+  sel.innerHTML = '<option value="">— Venta sin cliente (público general) —</option>';
+  lista.forEach(c => sel.innerHTML += `<option value="${c.cc_cliente}">${c.nombre} — CC ${c.cc_cliente}</option>`);
+  if (val) sel.value = val;
+}
+
+// ── Productos ─────────────────────────────────────────────────────────────────
+function renderProductos(lista) {
+  const el = document.getElementById('productos-body');
+  if (!lista.length) {
+    el.innerHTML = '<div class="empty-state"><p>Sin productos</p></div>';
+    return;
+  }
+  el.innerHTML = lista.map(p => `
+    <div class="producto-row">
+      <div class="producto-info">
+        <div class="producto-nombre">${p.nombre}</div>
+        <div style="display:flex; align-items:center;">
+          <span class="producto-precio">$${Number(p.precio||0).toLocaleString('es-CO')}</span>
+          <span class="producto-stock">· stock: ${p.stock}</span>
+        </div>
+      </div>
+      <button class="btn-agregar" onclick="agregarAlCarrito(${p.codigo_producto})"
+        ${p.stock <= 0 ? 'disabled title="Sin stock"' : ''}>+</button>
+    </div>
+  `).join('');
+}
+
+function filterProductos() {
+  const q = document.getElementById('search-producto').value.toLowerCase();
+  renderProductos(productos.filter(p =>
+    p.nombre.toLowerCase().includes(q) || String(p.codigo_producto).includes(q)
+  ));
+}
+
+// ── Carrito ───────────────────────────────────────────────────────────────────
+function agregarAlCarrito(id) {
+  const p = productos.find(x => x.codigo_producto === id);
+  if (!p) return;
+
+  if (carrito[id]) {
+    if (carrito[id].cantidad >= p.stock) {
+      toast('Stock máximo alcanzado', 'error'); return;
+    }
+    carrito[id].cantidad++;
+  } else {
+    carrito[id] = { nombre: p.nombre, precio: p.precio, cantidad: 1, stock: p.stock };
+  }
+  renderCarrito();
+}
+
+function cambiarCantidad(id, delta) {
+  if (!carrito[id]) return;
+  carrito[id].cantidad += delta;
+  if (carrito[id].cantidad <= 0) {
+    delete carrito[id];
+  }
+  renderCarrito();
+}
+
+function limpiarCarrito() {
+  carrito = {};
+  renderCarrito();
+}
+
+function renderCarrito() {
+  const el    = document.getElementById('carrito-items');
+  const ids   = Object.keys(carrito);
+  const total = ids.reduce((s, id) => s + carrito[id].precio * carrito[id].cantidad, 0);
+
+  document.getElementById('total-display').textContent = '$' + total.toLocaleString('es-CO');
+  document.getElementById('btn-finalizar').disabled = ids.length === 0;
+
+  if (!ids.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:32px 20px"><div class="icon">▤</div><p>Sin productos</p></div>';
+    return;
+  }
+
+  el.innerHTML = ids.map(id => {
+    const item = carrito[id];
+    const sub  = item.precio * item.cantidad;
+    return `<div class="carrito-item">
+      <div class="carrito-nombre">${item.nombre}</div>
+      <div class="qty-control">
+        <button class="qty-btn" onclick="cambiarCantidad(${id}, -1)">−</button>
+        <span class="qty-num">${item.cantidad}</span>
+        <button class="qty-btn" onclick="cambiarCantidad(${id}, 1)"
+          ${item.cantidad >= item.stock ? 'disabled' : ''}>+</button>
+      </div>
+      <div class="carrito-subtotal">$${sub.toLocaleString('es-CO')}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Finalizar venta ───────────────────────────────────────────────────────────
+async function finalizarVenta() {
+  const ids   = Object.keys(carrito);
+  if (!ids.length) return;
+
+  const cc_cliente = document.getElementById('sel-cliente').value || null;
+  const items      = ids.map(id => ({
+    id_producto: Number(id),
+    cantidad:    carrito[id].cantidad
+  }));
+
+  const body = { items };
+  if (cc_cliente) body.cc_cliente = Number(cc_cliente);
+
+  const btn = document.getElementById('btn-finalizar');
+  btn.textContent = 'Procesando...';
+  btn.disabled    = true;
+
+  const res  = await apiFetch('/api/facturas', { method: 'POST', body: JSON.stringify(body) });
+  const data = await res.json();
+
+  btn.textContent = 'Finalizar venta';
+  btn.disabled    = false;
+
+  if (!res.ok) { toast(data.error, 'error'); return; }
+
+  // Mostrar resumen
+  const total = Object.keys(carrito).reduce((s, id) => s + carrito[id].precio * carrito[id].cantidad, 0);
+  const clienteNombre = document.getElementById('sel-cliente').selectedOptions[0].text;
+
+  document.getElementById('resumen-body').innerHTML = `
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-family:var(--font-mono); font-size:32px; color:var(--green); margin-bottom:4px;">✓</div>
+      <div style="font-size:13px; color:var(--text2);">Factura <strong style="color:var(--text)">#${data.id_factura}</strong> generada</div>
+    </div>
+    <table style="width:100%; margin-bottom:16px;">
+      <thead><tr><th>Producto</th><th>Cant.</th><th>Subtotal</th></tr></thead>
+      <tbody>
+        ${Object.keys(carrito).map(id => `<tr>
+          <td style="color:var(--text)">${carrito[id].nombre}</td>
+          <td>${carrito[id].cantidad}</td>
+          <td style="font-family:var(--font-mono);">$${(carrito[id].precio * carrito[id].cantidad).toLocaleString('es-CO')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="display:flex; justify-content:space-between; padding:12px 0; border-top:1px solid var(--border);">
+      <span style="font-family:var(--font-mono); font-size:11px; text-transform:uppercase; color:var(--text3);">Cliente</span>
+      <span style="font-size:13px;">${cc_cliente ? clienteNombre : 'Público general'}</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:12px 0; border-top:1px solid var(--border);">
+      <span style="font-family:var(--font-mono); font-size:11px; text-transform:uppercase; color:var(--text3);">Total</span>
+      <span style="font-family:var(--font-mono); font-size:20px; font-weight:600; color:var(--accent);">$${total.toLocaleString('es-CO')}</span>
+    </div>
+  `;
+  document.getElementById('modal-resumen').classList.add('open');
+
+  // Limpiar estado
+  carrito = {};
+  renderCarrito();
+  document.getElementById('sel-cliente').value = '';
+  load(); // refrescar stock
+}
+
+function closeResumen() {
+  document.getElementById('modal-resumen').classList.remove('open');
+}
+
+// ── Cliente rápido ────────────────────────────────────────────────────────────
+function openClienteModal()  { document.getElementById('modal-cliente').classList.add('open'); }
+function closeClienteModal() { document.getElementById('modal-cliente').classList.remove('open'); }
+
+async function guardarCliente() {
+  const cc     = Number(document.getElementById('c-cc').value);
+  const nombre = document.getElementById('c-nombre').value.trim();
+  const email  = document.getElementById('c-email').value.trim();
+  if (!cc || !nombre || !email) { toast('Completa todos los campos', 'error'); return; }
+
+  const uRes  = await apiFetch('/api/usuarios', { method: 'POST', body: JSON.stringify({ nombre, email }) });
+  const uData = await uRes.json();
+  if (!uRes.ok) { toast(uData.error, 'error'); return; }
+
+  const cRes  = await apiFetch('/api/clientes', { method: 'POST', body: JSON.stringify({ cc_cliente: cc, id_usuario: uData.id_usuario }) });
+  const cData = await cRes.json();
+  if (!cRes.ok) { toast(cData.error, 'error'); return; }
+
+  toast('Cliente creado y seleccionado');
+  const res      = await apiFetch('/api/clientes');
+  clientes       = await res.json();
+  poblarClientes(clientes);
+  document.getElementById('sel-cliente').value = cc;
+  document.getElementById('c-cc').value = '';
+  document.getElementById('c-nombre').value = '';
+  document.getElementById('c-email').value = '';
+  closeClienteModal();
+}
+
+// ── Producto rápido ───────────────────────────────────────────────────────────
+function openProductoModal() {
+  document.getElementById('modal-producto').classList.add('open');
+}
+
+function closeProductoModal() {
+  document.getElementById('modal-producto').classList.remove('open');
+}
+
+async function guardarProducto() {
+  const codigo = Number(document.getElementById('p-codigo').value);
+  const nombre = document.getElementById('p-nombre').value.trim();
+  const precio = Number(document.getElementById('p-precio').value);
+  const stock  = Number(document.getElementById('p-stock').value);
+  const nit    = document.getElementById('p-proveedor').value || null;
+
+  if (!codigo || !nombre || !precio) { toast('Código, nombre y precio son requeridos', 'error'); return; }
+
+  const body = { codigo_producto: codigo, nombre, precio, stock: stock || 0 };
+  if (nit) body.nit_proveedor = Number(nit);
+
+  const res  = await apiFetch('/api/productos', { method: 'POST', body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+
+  toast('Producto creado, ya puedes agregarlo al carrito');
+
+  // Limpiar campos
+  document.getElementById('p-codigo').value   = '';
+  document.getElementById('p-nombre').value   = '';
+  document.getElementById('p-precio').value   = '';
+  document.getElementById('p-stock').value    = '';
+  document.getElementById('p-proveedor').value = '';
+
+  // Recargar lista de productos y mostrar el nuevo
+  const pRes = await apiFetch('/api/productos');
+  productos  = await pRes.json();
+  renderProductos(productos);
+  closeProductoModal();
+}
+
+document.addEventListener('DOMContentLoaded', load);
+</script>
+{% endblock %}

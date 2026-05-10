@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}WamStock{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="app-layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo">WamStock</div>
+      <div class="tagline">Gestión de inventario</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Principal</div>
+        <a href="/dashboard" class="nav-item {% if active == 'dashboard' %}active{% endif %}">
+          <span class="icon">◈</span> Dashboard
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Inventario</div>
+        <a href="/productos" class="nav-item {% if active == 'productos' %}active{% endif %}">
+          <span class="icon">▦</span> Productos
+        </a>
+        <a href="/proveedores" class="nav-item {% if active == 'proveedores' %}active{% endif %}">
+          <span class="icon">◎</span> Proveedores
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Ventas</div>
+        <a href="/ventas" class="nav-item {% if active == 'ventas' %}active{% endif %}">
+          <span class="icon">◈</span> Nueva venta
+        </a>
+        <a href="/facturas" class="nav-item {% if active == 'facturas' %}active{% endif %}">
+          <span class="icon">▤</span> Facturas
+        </a>
+        <a href="/clientes" class="nav-item {% if active == 'clientes' %}active{% endif %}">
+          <span class="icon">◉</span> Clientes
+        </a>
+      </div>
+
+      <!-- Solo visible para tendero -->
+      <div class="nav-section" id="admin-nav" style="display:none">
+        <div class="nav-section-label">Administración</div>
+        <a href="/usuarios" class="nav-item {% if active == 'usuarios' %}active{% endif %}">
+          <span class="icon">◐</span> Usuarios
+        </a>
+        <a href="/logs" class="nav-item {% if active == 'logs' %}active{% endif %}">
+          <span class="icon">▧</span> Logs
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div>
+          <div class="user-name" id="user-name">Cargando...</div>
+          <div class="user-role" id="user-role">—</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="logout()">⎋ Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="topbar">
+      <div class="page-title">
+        <span class="icon">{% block page_icon %}◈{% endblock %}</span>
+        {% block page_title %}Dashboard{% endblock %}
+      </div>
+      <div class="topbar-actions">
+        {% block topbar_actions %}{% endblock %}
+      </div>
+    </div>
+
+    <div class="page-body">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+  // ── Auth helpers ────────────────────────────────────────────────────────────
+  function getToken()  { return sessionStorage.getItem('token'); }
+  function getUser()   { return JSON.parse(sessionStorage.getItem('user') || '{}'); }
+  function getRol()    { return sessionStorage.getItem('rol'); }
+
+  function logout() {
+    sessionStorage.clear();
+    window.location.href = '/';
+  }
+
+  function authHeaders() {
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() };
+  }
+
+  async function apiFetch(url, options = {}) {
+    const res = await fetch(url, {
+      ...options,
+      headers: { ...authHeaders(), ...(options.headers || {}) }
+    });
+    if (res.status === 401) { logout(); return null; }
+    return res;
+  }
+
+  // ── Toast ───────────────────────────────────────────────────────────────────
+  function toast(msg, type = 'ok') {
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = 'toast' + (type === 'error' ? ' error' : '');
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  // ── Init ────────────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!getToken()) { window.location.href = '/'; return; }
+
+    const user = getUser();
+    const rol  = getRol();
+
+    document.getElementById('user-name').textContent  = user.nombre || 'Usuario';
+    document.getElementById('user-role').textContent  = rol || '';
+    document.getElementById('user-avatar').textContent = (user.nombre || 'U')[0].toUpperCase();
+
+    if (rol === 'tendero') {
+      document.getElementById('admin-nav').style.display = 'block';
+    }
+  });
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

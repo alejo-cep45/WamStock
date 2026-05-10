@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% set active = "logs" %}
+
+{% block title %}Logs — WamStock{% endblock %}
+{% block page_icon %}▧{% endblock %}
+{% block page_title %}Logs del sistema{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<div style="display:flex; gap:4px; margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:0;">
+  <button class="tab-btn active" onclick="switchTab('movimientos')">Movimientos</button>
+  <button class="tab-btn" onclick="switchTab('sesiones')">Sesiones</button>
+  <button class="tab-btn" onclick="switchTab('alertas')">Alertas stock</button>
+  <button class="tab-btn" onclick="switchTab('ventas')">Detalle ventas</button>
+</div>
+
+<div class="table-card">
+  <div id="log-body"><div class="loading"><span class="spinner"></span>Cargando...</div></div>
+</div>
+
+<style>
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text3);
+  padding: 8px 16px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--text2); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentTab = 'movimientos';
+
+const endpoints = {
+  movimientos: '/api/logs',
+  sesiones:    '/api/logs/sesiones',
+  alertas:     '/api/logs/alertas-stock',
+  ventas:      '/api/logs/facturas-detalle'
+};
+
+const renderers = {
+  movimientos: data => {
+    if (!data.length) return emptyState('Sin movimientos');
+    return tabla(['Tipo','Producto','Modificado por','Rol','Fecha'],
+      data.map(d => [
+        `<span class="badge ${d.tipo==='venta'?'badge-green':'badge-blue'}">${d.tipo}</span>`,
+        d.producto ?? d.id_factura ?? '—',
+        d.modificado_por ?? d.registrado_por ?? '—',
+        d.rol ?? '—',
+        (d.fecha ?? '—').substring(0,16)
+      ])
+    );
+  },
+  sesiones: data => {
+    if (!data.length) return emptyState('Sin sesiones registradas');
+    return tabla(['Email','Nombre','Rol','IP','Fecha'],
+      data.map(d => [d.email, d.nombre, `<span class="badge badge-yellow">${d.rol}</span>`, d.ip ?? '—', (d.fecha ?? '—').substring(0,16)])
+    );
+  },
+  alertas: data => {
+    if (!data.length) return emptyState('Sin alertas de stock');
+    return tabla(['Código','Producto','Stock','Umbral','Por','Fecha'],
+      data.map(d => [
+        d.codigo_producto,
+        d.nombre_producto,
+        `<span class="badge badge-red">${d.stock_actual}</span>`,
+        d.umbral,
+        d.modificado_por ?? '—',
+        (d.fecha ?? '—').substring(0,16)
+      ])
+    );
+  },
+  ventas: data => {
+    if (!data.length) return emptyState('Sin detalles de ventas');
+    return tabla(['Factura','Cliente','Producto','Precio al momento','Registrado por','Fecha'],
+      data.map(d => [
+        d.id_factura,
+        d.cliente?.nombre ?? '—',
+        d.producto?.nombre ?? '—',
+        `$${Number(d.producto?.precio_al_momento ?? 0).toLocaleString('es-CO')}`,
+        d.registrado_por ?? '—',
+        (d.fecha_registro ?? '—').substring(0,16)
+      ])
+    );
+  }
+};
+
+function tabla(headers, rows) {
+  return `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+  <tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' style="color:var(--text);font-family:var(--font-mono);font-size:11px"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function emptyState(msg) {
+  return `<div class="empty-state"><div class="icon">▧</div><p>${msg}</p></div>`;
+}
+
+async function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['movimientos','sesiones','alertas','ventas'][i] === tab);
+  });
+  document.getElementById('log-body').innerHTML = '<div class="loading"><span class="spinner"></span>Cargando...</div>';
+  const res  = await apiFetch(endpoints[tab]);
+  const data = await res.json();
+  document.getElementById('log-body').innerHTML = renderers[tab](data);
+}
+
+document.addEventListener('DOMContentLoaded', () => switchTab('movimientos'));
+</script>
+{% endblock %}

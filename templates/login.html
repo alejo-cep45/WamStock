@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WamStock — Acceso</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">WamStock</div>
+    <div class="login-subtitle">Sistema de inventario</div>
+    <h2>Iniciar sesión</h2>
+
+    <div id="error-msg" style="display:none; color:var(--red); font-size:12px; font-family:var(--font-mono); margin-bottom:16px; padding:10px 12px; background:rgba(240,82,82,0.08); border:1px solid rgba(240,82,82,0.2);"></div>
+
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="correo@ejemplo.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label>Contraseña</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+
+    <button class="btn btn-primary btn-full" id="btn-login" onclick="doLogin()">
+      Ingresar
+    </button>
+  </div>
+</div>
+
+<script>
+  // Si ya hay token, redirigir
+  if (sessionStorage.getItem('token')) window.location.href = '/dashboard';
+
+  document.getElementById('password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogin() {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const errDiv   = document.getElementById('error-msg');
+    const btn      = document.getElementById('btn-login');
+
+    if (!email || !password) {
+      showError('Completa todos los campos'); return;
+    }
+
+    btn.textContent = 'Ingresando...';
+    btn.disabled = true;
+
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, contrasena: password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Error al iniciar sesión'); return;
+      }
+
+      sessionStorage.setItem('token', data.access_token);
+      sessionStorage.setItem('rol',   data.rol);
+      sessionStorage.setItem('user',  JSON.stringify({ nombre: data.nombre, email }));
+      window.location.href = '/dashboard';
+
+    } catch (e) {
+      showError('No se pudo conectar con el servidor');
+    } finally {
+      btn.textContent = 'Ingresar';
+      btn.disabled = false;
+    }
+  }
+
+  function showError(msg) {
+    const d = document.getElementById('error-msg');
+    d.textContent = msg;
+    d.style.display = 'block';
+  }
+</script>
+</body>
+</html>

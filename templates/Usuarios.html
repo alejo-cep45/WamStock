@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% set active = "usuarios" %}
+
+{% block title %}Usuarios — WamStock{% endblock %}
+{% block page_icon %}◐{% endblock %}
+{% block page_title %}Usuarios{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="openModal()">+ Nuevo usuario</button>
+{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Gestión de usuarios</span>
+    <input class="table-search" type="text" id="search" placeholder="Buscar usuario..." oninput="filterTable()">
+  </div>
+  <div id="table-body"><div class="loading"><span class="spinner"></span>Cargando...</div></div>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Nuevo usuario</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="f-nombre" placeholder="Nombre completo">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="f-email" placeholder="correo@ejemplo.com">
+      </div>
+      <div class="form-group">
+        <label>Contraseña <span style="color:var(--text3)">(dejar vacío para no cambiar)</span></label>
+        <input type="password" id="f-pass" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label>Rol</label>
+        <select id="f-rol">
+          <option value="">— Sin rol (cliente) —</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let usuarios = [];
+let editingId = null;
+
+async function load() {
+  const [uRes, rRes] = await Promise.all([
+    apiFetch('/api/usuarios'),
+    apiFetch('/api/roles')
+  ]);
+  usuarios = await uRes.json();
+  const roles = await rRes.json();
+
+  const sel = document.getElementById('f-rol');
+  sel.innerHTML = '<option value="">— Sin rol (cliente) —</option>';
+  roles.forEach(r => sel.innerHTML += `<option value="${r.id_rol}">${r.nombre_rol}</option>`);
+
+  renderTable(usuarios);
+}
+
+function renderTable(data) {
+  const el = document.getElementById('table-body');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">◐</div><p>Sin usuarios</p></div>';
+    return;
+  }
+  el.innerHTML = `<table><thead><tr>
+    <th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Acciones</th>
+  </tr></thead><tbody>
+    ${data.map(u => `<tr>
+      <td>${u.id_usuario}</td>
+      <td style="color:var(--text)">${u.nombre}</td>
+      <td>${u.email}</td>
+      <td>${u.nombre_rol
+        ? `<span class="badge ${u.nombre_rol === 'tendero' ? 'badge-yellow' : 'badge-blue'}">${u.nombre_rol}</span>`
+        : '<span class="badge">cliente</span>'}</td>
+      <td class="td-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editar(${u.id_usuario})">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="eliminar(${u.id_usuario})">Eliminar</button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function filterTable() {
+  const q = document.getElementById('search').value.toLowerCase();
+  renderTable(usuarios.filter(u =>
+    u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+  ));
+}
+
+function openModal(u = null) {
+  editingId = u?.id_usuario ?? null;
+  document.getElementById('modal-title').textContent = u ? 'Editar usuario' : 'Nuevo usuario';
+  document.getElementById('f-nombre').value = u?.nombre ?? '';
+  document.getElementById('f-email').value  = u?.email ?? '';
+  document.getElementById('f-pass').value   = '';
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function editar(id) {
+  const u = usuarios.find(x => x.id_usuario === id);
+  if (u) openModal(u);
+}
+
+async function guardar() {
+  const body = {
+    nombre: document.getElementById('f-nombre').value.trim(),
+    email:  document.getElementById('f-email').value.trim(),
+    id_rol: document.getElementById('f-rol').value || null
+  };
+  const pass = document.getElementById('f-pass').value;
+  if (pass) body.contrasena = pass;
+  if (!body.nombre || !body.email) { toast('Nombre y email son requeridos', 'error'); return; }
+
+  const res  = editingId
+    ? await apiFetch(`/api/usuarios/${editingId}`, { method: 'PUT', body: JSON.stringify(body) })
+    : await apiFetch('/api/usuarios', { method: 'POST', body: JSON.stringify(body) });
+
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast(editingId ? 'Usuario actualizado' : 'Usuario creado');
+  closeModal();
+  load();
+}
+
+async function eliminar(id) {
+  if (!confirm('¿Eliminar este usuario?')) return;
+  const res  = await apiFetch(`/api/usuarios/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast('Usuario eliminado');
+  load();
+}
+
+document.addEventListener('DOMContentLoaded', load);
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+</script>
+{% endblock %}

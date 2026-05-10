@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% set active = "proveedores" %}
+
+{% block title %}Proveedores — WamStock{% endblock %}
+{% block page_icon %}◎{% endblock %}
+{% block page_title %}Proveedores{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" id="btn-nuevo" style="display:none" onclick="openModal()">+ Nuevo proveedor</button>
+{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Proveedores registrados</span>
+    <input class="table-search" type="text" id="search" placeholder="Buscar..." oninput="filterTable()">
+  </div>
+  <div id="table-body"><div class="loading"><span class="spinner"></span>Cargando...</div></div>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Nuevo proveedor</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>NIT</label>
+        <input type="number" id="f-nit" placeholder="900000000">
+      </div>
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" id="f-nombre" placeholder="Nombre de la empresa">
+      </div>
+      <div class="form-group">
+        <label>Contacto</label>
+        <input type="text" id="f-contacto" placeholder="Teléfono o email">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let proveedores = [];
+let editingNit  = null;
+
+async function load() {
+  const res  = await apiFetch('/api/proveedores');
+  proveedores = await res.json();
+  if (getRol() === 'tendero') document.getElementById('btn-nuevo').style.display = 'inline-flex';
+  renderTable(proveedores);
+}
+
+function renderTable(data) {
+  const el  = document.getElementById('table-body');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">◎</div><p>Sin proveedores</p></div>';
+    return;
+  }
+  const rol = getRol();
+  el.innerHTML = `<table><thead><tr>
+    <th>NIT</th><th>Nombre</th><th>Contacto</th>${rol === 'tendero' ? '<th>Acciones</th>' : ''}
+  </tr></thead><tbody>
+    ${data.map(p => `<tr>
+      <td>${p.nit_proveedor}</td>
+      <td style="color:var(--text)">${p.nombre}</td>
+      <td>${p.contacto ?? '—'}</td>
+      ${rol === 'tendero' ? `<td class="td-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editar(${p.nit_proveedor})">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="eliminar(${p.nit_proveedor})">Eliminar</button>
+      </td>` : ''}
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function filterTable() {
+  const q = document.getElementById('search').value.toLowerCase();
+  renderTable(proveedores.filter(p => p.nombre.toLowerCase().includes(q)));
+}
+
+function openModal(p = null) {
+  editingNit = p?.nit_proveedor ?? null;
+  document.getElementById('modal-title').textContent = p ? 'Editar proveedor' : 'Nuevo proveedor';
+  document.getElementById('f-nit').value      = p?.nit_proveedor ?? '';
+  document.getElementById('f-nombre').value   = p?.nombre ?? '';
+  document.getElementById('f-contacto').value = p?.contacto ?? '';
+  document.getElementById('f-nit').disabled   = !!p;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function editar(nit) {
+  const p = proveedores.find(x => x.nit_proveedor === nit);
+  if (p) openModal(p);
+}
+
+async function guardar() {
+  const nombre   = document.getElementById('f-nombre').value.trim();
+  const contacto = document.getElementById('f-contacto').value.trim();
+  if (!nombre) { toast('El nombre es requerido', 'error'); return; }
+
+  let res;
+  if (editingNit) {
+    res = await apiFetch(`/api/proveedores/${editingNit}`, {
+      method: 'PUT', body: JSON.stringify({ nombre, contacto })
+    });
+  } else {
+    const nit = Number(document.getElementById('f-nit').value);
+    if (!nit) { toast('El NIT es requerido', 'error'); return; }
+    res = await apiFetch('/api/proveedores', {
+      method: 'POST', body: JSON.stringify({ nit_proveedor: nit, nombre, contacto })
+    });
+  }
+
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast(editingNit ? 'Proveedor actualizado' : 'Proveedor creado');
+  closeModal();
+  load();
+}
+
+async function eliminar(nit) {
+  if (!confirm('¿Eliminar este proveedor?')) return;
+  const res  = await apiFetch(`/api/proveedores/${nit}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { toast(data.error, 'error'); return; }
+  toast('Proveedor eliminado');
+  load();
+}
+
+document.addEventListener('DOMContentLoaded', load);
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+</script>
+{% endblock %}

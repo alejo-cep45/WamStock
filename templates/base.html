@@ -47,6 +47,24 @@
         </a>
       </div>
 
+      <div class="nav-section">
+        <div class="nav-section-label">Operaciones</div>
+        <a href="/caja" class="nav-item {% if active == 'caja' %}active{% endif %}">
+          <span class="icon">▣</span> Cierre de caja
+        </a>
+      </div>
+
+      <!-- Cierre de caja -->
+      <div class="nav-section">
+        <div class="nav-section-label">Caja</div>
+        <a href="/dashboard" class="nav-item {% if active == 'caja_dashboard' %}active{% endif %}">
+          <span class="icon">▣</span> Cierre del día
+        </a>
+        <a href="/caja" class="nav-item {% if active == 'caja' %}active{% endif %}">
+          <span class="icon">▤</span> Historial
+        </a>
+      </div>
+
       <!-- Solo visible para tendero -->
       <div class="nav-section" id="admin-nav" style="display:none">
         <div class="nav-section-label">Administración</div>

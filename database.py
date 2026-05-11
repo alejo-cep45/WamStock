@@ -12,11 +12,12 @@ def get_db_connection():
 
 #NoRelacional(mongo)
 _mongo_client    = MongoClient(Config.MONGO_URI)
-db_mongo        = _mongo_client[Config.MONGO_DB]
-
-col_movimientos  = db_mongo["movimientos_log"]
-col_sesiones     = db_mongo["sesiones_log"]
-col_alertas      = db_mongo["alertas_stock"]
-col_facturas_det = db_mongo["facturas_detalle"]
-
+_db_mongo        = _mongo_client[Config.MONGO_DB]
+db_mongo         = _db_mongo  # exportar para uso directo en blueprints
+ 
+col_movimientos  = _db_mongo["movimientos_log"]
+col_sesiones     = _db_mongo["sesiones_log"]
+col_alertas      = _db_mongo["alertas_stock"]
+col_facturas_det = _db_mongo["facturas_detalle"]
+col_cierres      = _db_mongo["cierres_caja"]
 

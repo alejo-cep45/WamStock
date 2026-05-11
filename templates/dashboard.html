@@ -29,6 +29,17 @@
   </div>
 </div>
 
+<!-- Cierre de caja -->
+<div class="table-card" style="margin-bottom:24px;">
+  <div class="table-header">
+    <span class="table-title">Cierre de caja</span>
+    <span id="cierre-estado"></span>
+  </div>
+  <div style="padding:20px 24px;" id="cierre-resumen">
+    <div class="loading"><span class="spinner"></span>Cargando resumen...</div>
+  </div>
+</div>
+
 <!-- Alertas de stock -->
 <div class="table-card" id="alertas-card" style="margin-bottom:24px; display:none">
   <div class="table-header">
@@ -49,6 +60,48 @@
 
 {% block scripts %}
 <script>
+async function cerrarCaja() {
+  if (!confirm('¿Confirmar cierre de caja del día? Esta acción no se puede deshacer.')) return;
+  const res  = await apiFetch('/api/caja/cerrar', { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  loadResumenCaja();
+}
+
+async function loadResumenCaja() {
+  const res  = await apiFetch('/api/caja/resumen-hoy');
+  if (!res) return;
+  const data = await res.json();
+  const el   = document.getElementById('cierre-resumen');
+  const est  = document.getElementById('cierre-estado');
+
+  if (data.ya_cerrado) {
+    const c = data.cierre;
+    est.innerHTML = '<span class="badge badge-green">Cerrado</span>';
+    el.innerHTML  = `
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px;">
+        <div><div class="stat-label">Cerrado por</div><div style="font-size:15px;margin-top:4px;">${c.cerrado_por}</div></div>
+        <div><div class="stat-label">Hora cierre</div><div style="font-family:var(--font-mono);font-size:14px;margin-top:4px;">${c.hora_cierre?.substring(0,16)}</div></div>
+        <div><div class="stat-label">Ventas del día</div><div style="font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--text);margin-top:4px;">${c.total_ventas}</div></div>
+        <div><div class="stat-label">Total recaudado</div><div style="font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--accent);margin-top:4px;">$${Number(c.total_recaudado||0).toLocaleString('es-CO')}</div></div>
+        ${c.producto_mas_vendido ? `<div><div class="stat-label">Más vendido</div><div style="font-size:14px;margin-top:4px;">${c.producto_mas_vendido.nombre} <span style="color:var(--text3)">(${c.producto_mas_vendido.total_vendido} uds)</span></div></div>` : ''}
+      </div>`;
+    return;
+  }
+
+  // No cerrado aún — mostrar resumen del día y botón
+  est.innerHTML = '<span class="badge badge-yellow">Pendiente</span>';
+  el.innerHTML  = `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:20px;">
+      <div><div class="stat-label">Ventas hoy</div><div style="font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--text);margin-top:4px;">${data.total_ventas}</div></div>
+      <div><div class="stat-label">Total recaudado</div><div style="font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--accent);margin-top:4px;">$${Number(data.total_recaudado||0).toLocaleString('es-CO')}</div></div>
+      ${data.producto_mas_vendido ? `<div><div class="stat-label">Más vendido</div><div style="font-size:14px;margin-top:4px;">${data.producto_mas_vendido.nombre} <span style="color:var(--text3)">(${data.producto_mas_vendido.total_vendido} uds)</span></div></div>` : ''}
+    </div>
+    <button class="btn btn-primary" onclick="cerrarCaja()">Realizar cierre de caja</button>
+    <a href="/caja" class="btn btn-secondary" style="margin-left:8px;">Ver historial</a>
+  `;
+}
+
 async function loadDashboard() {
   const [productos, clientes, facturas, proveedores, alertas] = await Promise.all([
     apiFetch('/api/productos').then(r => r?.json()),
@@ -101,6 +154,6 @@ async function loadDashboard() {
   </tbody></table>`;
 }
 
-document.addEventListener('DOMContentLoaded', loadDashboard);
+document.addEventListener('DOMContentLoaded', () => { loadDashboard(); loadResumenCaja(); });
 </script>
 {% endblock %}

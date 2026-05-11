@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% set active = "caja" %}
+
+{% block title %}Historial de Caja — WamStock{% endblock %}
+{% block page_icon %}▣{% endblock %}
+{% block page_title %}Historial de cierres{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Cierres de caja</span>
+  </div>
+  <div id="table-body"><div class="loading"><span class="spinner"></span>Cargando...</div></div>
+</div>
+
+<!-- Modal detalle cierre -->
+<div class="modal-overlay" id="modal-detalle">
+  <div class="modal" style="width:540px">
+    <div class="modal-header">
+      <span class="modal-title" id="detalle-titulo">Detalle cierre</span>
+      <button class="modal-close" onclick="closeDetalle()">✕</button>
+    </div>
+    <div class="modal-body" id="detalle-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeDetalle()">Cerrar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let cierres = [];
+
+async function load() {
+  const res = await apiFetch('/api/caja/historial');
+  cierres   = await res.json();
+  renderTable(cierres);
+}
+
+function renderTable(data) {
+  const el = document.getElementById('table-body');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">▣</div><p>Sin cierres registrados</p></div>';
+    return;
+  }
+  el.innerHTML = `<table><thead><tr>
+    <th>Fecha</th><th>Cerrado por</th><th>Rol</th><th>Ventas</th><th>Total recaudado</th><th>Hora cierre</th><th>Acciones</th>
+  </tr></thead><tbody>
+    ${data.map((c, i) => `<tr>
+      <td>${c.fecha}</td>
+      <td style="color:var(--text)">${c.cerrado_por}</td>
+      <td><span class="badge ${c.rol === 'tendero' ? 'badge-yellow' : 'badge-blue'}">${c.rol}</span></td>
+      <td><span class="badge badge-green">${c.total_ventas}</span></td>
+      <td style="font-family:var(--font-mono); color:var(--accent);">$${Number(c.total_recaudado||0).toLocaleString('es-CO')}</td>
+      <td style="font-family:var(--font-mono); font-size:12px;">${c.hora_cierre?.substring(0,16) ?? '—'}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="verDetalle(${i})">Ver detalle</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function verDetalle(i) {
+  const c = cierres[i];
+  document.getElementById('detalle-titulo').textContent = `Cierre del ${c.fecha}`;
+  document.getElementById('detalle-body').innerHTML = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+      <div>
+        <div class="stat-label">Cerrado por</div>
+        <div style="font-size:14px; margin-top:4px;">${c.cerrado_por} <span class="badge ${c.rol==='tendero'?'badge-yellow':'badge-blue'}" style="margin-left:6px;">${c.rol}</span></div>
+      </div>
+      <div>
+        <div class="stat-label">Hora de cierre</div>
+        <div style="font-family:var(--font-mono); font-size:14px; margin-top:4px;">${c.hora_cierre?.substring(0,16)}</div>
+      </div>
+      <div>
+        <div class="stat-label">Total ventas</div>
+        <div style="font-family:var(--font-mono); font-size:22px; font-weight:600; margin-top:4px;">${c.total_ventas}</div>
+      </div>
+      <div>
+        <div class="stat-label">Total recaudado</div>
+        <div style="font-family:var(--font-mono); font-size:22px; font-weight:600; color:var(--accent); margin-top:4px;">$${Number(c.total_recaudado||0).toLocaleString('es-CO')}</div>
+      </div>
+      ${c.producto_mas_vendido ? `<div style="grid-column:1/-1">
+        <div class="stat-label">Producto más vendido</div>
+        <div style="font-size:14px; margin-top:4px;">${c.producto_mas_vendido.nombre} — <span style="color:var(--text3)">${c.producto_mas_vendido.total_vendido} unidades</span></div>
+      </div>` : ''}
+    </div>
+
+    ${c.detalle_ventas?.length ? `
+    <div style="font-size:11px; font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.8px; color:var(--text3); margin-bottom:8px;">Ventas del día</div>
+    <table>
+      <thead><tr><th>#</th><th>Cliente</th><th>Total</th><th>Hora</th></tr></thead>
+      <tbody>
+        ${c.detalle_ventas.map(f => `<tr>
+          <td>${f.id_factura}</td>
+          <td>${f.nombre_cliente ?? '<span style="color:var(--text3)">Público general</span>'}</td>
+          <td style="font-family:var(--font-mono); color:var(--accent);">$${Number(f.total||0).toLocaleString('es-CO')}</td>
+          <td style="font-family:var(--font-mono); font-size:11px;">${f.fecha?.substring(11,16) ?? '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : '<p style="color:var(--text3); font-size:13px;">Sin ventas ese día</p>'}
+  `;
+  document.getElementById('modal-detalle').classList.add('open');
+}
+
+function closeDetalle() { document.getElementById('modal-detalle').classList.remove('open'); }
+
+document.addEventListener('DOMContentLoaded', load);
+document.getElementById('modal-detalle').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-detalle')) closeDetalle();
+});
+</script>
+{% endblock %}

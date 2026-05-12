@@ -227,6 +227,9 @@ Se implementó un sistema de registro de eventos utilizando MongoDB, lo que perm
   }
 ]
 ```
+<img width="1919" height="915" alt="image" src="https://github.com/user-attachments/assets/955b3689-0889-4dd6-9293-df5bde8073a7" />
+
+
 
 ---
 
